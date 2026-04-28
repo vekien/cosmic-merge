@@ -1,8 +1,8 @@
 # 🌌 Cosmic Merge — Devlog
 
+### PLAY: https://vekien.github.io/cosmic-merge/
+
 > A number-merging puzzle game built entirely through a single conversation with Claude.
-> 
-> **Play it:** *(drop the HTML file in any browser)*  
 > **Full conversation:** [claude.ai/share/8ebf4909-387f-47dd-8d1c-1b51d493f8d9](https://claude.ai/share/8ebf4909-387f-47dd-8d1c-1b51d493f8d9)
 
 ---
