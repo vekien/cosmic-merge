@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Cosmic Merge</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap');
+  * { box-sizing:border-box; margin:0; padding:0; touch-action:manipulation; }
+
+  :root {
+    --bg:#04050f;
+    --panel:rgba(6,10,38,0.88);
+    --cell-bg:rgba(12,20,72,0.55);
+    --border:rgba(80,120,255,0.14);
+  }
+
+  body {
+    font-family:'Nunito',sans-serif;
+    background:var(--bg);
+    display:flex; flex-direction:column; align-items:center;
+    min-height:100dvh; overflow:hidden; user-select:none;
+    position:relative;
+  }
+
+  /* ══ STARFIELD ══ */
+  #starfield {
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+  }
+
+  /* ══ SHOOTING STARS ══ */
+  .shoot {
+    position:fixed; pointer-events:none; z-index:1;
+    width:2px; height:2px; border-radius:50%;
+    background:#fff;
+    box-shadow:0 0 4px 1px rgba(255,255,255,0.8);
+    animation:shoot linear forwards;
+  }
+  @keyframes shoot {
+    0%   { opacity:1; transform:translate(0,0) scaleX(1); }
+    100% { opacity:0; transform:translate(220px,120px) scaleX(60); }
+  }
+
+  /* ══ NEBULA BLOBS behind grid ══ */
+  #nebula {
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(ellipse 55% 30% at 25% 65%, rgba(90,30,180,0.13) 0%, transparent 70%),
+      radial-gradient(ellipse 45% 25% at 78% 40%, rgba(20,80,200,0.11) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 35% at 55% 80%, rgba(0,160,180,0.08) 0%, transparent 70%);
+    animation:nebulaDrift 12s ease-in-out infinite alternate;
+  }
+  @keyframes nebulaDrift {
+    from { opacity:0.7; transform:scale(1) translateY(0); }
+    to   { opacity:1;   transform:scale(1.03) translateY(-6px); }
+  }
+
+  /* all game UI above bg layers */
+  #header, #queue-row, #grid-wrap { position:relative; z-index:2; }
+
+  /* ══ HEADER ══ */
+  #header {
+    width:100%; max-width:420px;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 16px 6px; gap:10px;
+  }
+
+  .score-box {
+    background:rgba(8,14,55,0.75);
+    border-radius:14px; padding:8px 18px; text-align:center; flex:1;
+    border:1px solid rgba(80,120,255,0.2);
+    box-shadow:0 0 20px rgba(60,100,255,0.1), inset 0 1px 0 rgba(255,255,255,0.04);
+    backdrop-filter:blur(10px);
+  }
+  .score-box .label {
+    font-size:10px; text-transform:uppercase; letter-spacing:1.8px; color:#4a68b8;
+  }
+  .score-box .value { font-size:24px; font-weight:900; color:#c0d0ff; line-height:1.1; }
+  .score-box .value.teal {
+    color:#4ecca3;
+    text-shadow:0 0 14px rgba(78,204,163,0.55);
+  }
+
+  #restart-btn {
+    background:rgba(8,14,55,0.75); border:1px solid rgba(80,120,255,0.2);
+    border-radius:50%; width:44px; height:44px;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; flex-shrink:0;
+    backdrop-filter:blur(10px);
+    transition:transform 0.15s, box-shadow 0.2s;
+  }
+  #restart-btn:active { transform:scale(0.88); }
+  #restart-btn:hover  { box-shadow:0 0 18px rgba(80,140,255,0.35); }
+  #restart-btn svg { fill:#4a68b8; }
+
+  /* ══ UNDO BUTTON ══ */
+  #undo-btn {
+    background:rgba(8,14,55,0.75); border:1px solid rgba(80,120,255,0.2);
+    border-radius:50%; width:44px; height:44px;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; flex-shrink:0; position:relative;
+    backdrop-filter:blur(10px);
+    transition:transform 0.15s, box-shadow 0.2s, opacity 0.2s;
+  }
+  #undo-btn svg { fill:#4a68b8; transition:fill 0.2s; }
+  #undo-btn.available {
+    border-color:rgba(78,204,163,0.5);
+    box-shadow:0 0 16px rgba(78,204,163,0.3);
+  }
+  #undo-btn.available svg { fill:#4ecca3; }
+  #undo-btn.available:active { transform:scale(0.88); }
+  #undo-btn.unavailable { opacity:0.35; cursor:not-allowed; }
+  /* charge progress ring */
+  #undo-ring {
+    position:absolute; inset:-3px;
+    border-radius:50%; pointer-events:none;
+  }
+  #undo-charge-label {
+    position:absolute; bottom:-18px; left:50%; transform:translateX(-50%);
+    font-size:9px; font-weight:900; letter-spacing:0.5px; white-space:nowrap;
+    color:#3a58a0; text-transform:uppercase;
+  }
+
+  /* ══ QUEUE ROW ══ */
+  #queue-row {
+    width:100%; max-width:420px;
+    padding:4px 16px 8px;
+    display:flex; align-items:center;
+    height:76px; position:relative;
+  }
+  /* next tile: absolutely positioned just left of current, smaller + dimmed */
+  #next-slot {
+    position:absolute; top:50%; transform:translateY(-50%);
+    width:44px; height:44px;
+    opacity:0.55;
+    transition:left 0.1s ease;
+  }
+  #next-tile { position:absolute; inset:0; border-radius:9px; }
+  /* current tile: absolutely positioned, aligned to col 3 by JS */
+  #current-slot {
+    position:absolute; top:50%; transform:translateY(-50%);
+    width:60px; height:60px;
+  }
+  #current-tile { width:60px; height:60px; position:relative; flex-shrink:0; }
+
+  /* ══ QUEUE TILES ══ */
+  .q-tile {
+    position:relative; border-radius:12px;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Nunito',sans-serif; font-weight:900; color:#fff;
+    overflow:hidden;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.45),
+      inset 0 -2px 0 rgba(0,0,0,0.3),
+      0 4px 16px rgba(0,0,0,0.55),
+      0 0 22px rgba(80,120,255,0.18);
+    text-shadow:0 1px 4px rgba(0,0,0,0.5);
+  }
+  .q-tile::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:48%;
+    border-radius:12px 12px 50% 50%/12px 12px 30% 30%;
+    background:linear-gradient(to bottom,rgba(255,255,255,0.4),rgba(255,255,255,0.08));
+    pointer-events:none;
+  }
+  .q-tile::after {
+    content:''; position:absolute; bottom:0; left:5%; right:5%; height:28%;
+    border-radius:0 0 12px 12px;
+    background:linear-gradient(to top,rgba(0,0,0,0.25),transparent);
+    pointer-events:none;
+  }
+  #next-slot  { position:relative; }
+  #next-tile  { position:absolute; inset:0; border-radius:9px; }
+  #current-tile { width:60px; height:60px; }
+
+  /* ══ GRID WRAP — nebula glow ══ */
+  #grid-wrap {
+    width:100%; max-width:420px; padding:0 10px 10px;
+    flex:1; display:flex; flex-direction:column; position:relative;
+  }
+
+  /* ══ GRID ══ */
+  #grid {
+    border-radius:20px;
+    padding:8px; display:grid; gap:5px; flex:1;
+    position:relative; z-index:1;
+    background:rgba(3,6,28,0.9);
+    border:1px solid rgba(60,100,220,0.22);
+    box-shadow:
+      0 0 0 1px rgba(20,50,150,0.3),
+      0 0 50px rgba(30,60,180,0.18),
+      inset 0 0 40px rgba(5,10,50,0.6);
+    max-height:600px;
+  }
+
+  /* subtle column dividers */
+  #grid::before {
+    content:''; position:absolute; inset:8px; border-radius:13px;
+    background:repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent calc(20% - 3px),
+      rgba(50,90,200,0.07) calc(20% - 3px),
+      rgba(50,90,200,0.07) calc(20% + 3px)
+    );
+    pointer-events:none; z-index:0;
+  }
+
+  /* grid top-edge glow strip */
+  #grid::after {
+    content:''; position:absolute; top:0; left:10%; right:10%; height:1px;
+    background:linear-gradient(90deg,transparent,rgba(100,160,255,0.4),transparent);
+    border-radius:1px; pointer-events:none;
+  }
+
+  .cell {
+    background:var(--cell-bg);
+    border-radius:10px;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; position:relative;
+    border:1px solid rgba(40,80,180,0.14);
+    transition:background 0.1s, border-color 0.1s, box-shadow 0.1s;
+  }
+  .cell.col-hl {
+    background:rgba(60,110,255,0.16) !important;
+    border-color:rgba(80,140,255,0.4) !important;
+    box-shadow:inset 0 0 14px rgba(60,110,255,0.14), 0 0 10px rgba(60,110,255,0.2) !important;
+  }
+  .cell.col-blocked {
+    background:rgba(180,30,30,0.12) !important;
+    border-color:rgba(200,50,50,0.2) !important;
+    cursor:not-allowed;
+  }
+  .cell:active { filter:brightness(1.35); }
+
+  /* ══ CELL TILES — glass/gloss ══ */
+  .cell-tile {
+    position:absolute; inset:3px; border-radius:8px;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Nunito',sans-serif; font-weight:900; color:#fff;
+    pointer-events:none; overflow:hidden;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.45),
+      inset 0 -2px 0 rgba(0,0,0,0.3),
+      0 4px 12px rgba(0,0,0,0.5),
+      0 0 14px rgba(80,120,255,0.15);
+    text-shadow:0 1px 4px rgba(0,0,0,0.5);
+  }
+  .cell-tile::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:48%;
+    border-radius:8px 8px 50% 50%/8px 8px 30% 30%;
+    background:linear-gradient(to bottom,rgba(255,255,255,0.4),rgba(255,255,255,0.07));
+    pointer-events:none;
+  }
+  .cell-tile::after {
+    content:''; position:absolute; bottom:0; left:5%; right:5%; height:28%;
+    border-radius:0 0 8px 8px;
+    background:linear-gradient(to top,rgba(0,0,0,0.25),transparent);
+    pointer-events:none;
+  }
+
+  /* ══ MERGE FLYER TILES ══ */
+  .merge-flyer {
+    position:absolute; z-index:60; border-radius:8px; pointer-events:none;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Nunito',sans-serif; font-weight:900; color:#fff;
+    overflow:hidden;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.45),
+      inset 0 -2px 0 rgba(0,0,0,0.3),
+      0 4px 14px rgba(0,0,0,0.5),
+      0 0 18px rgba(80,140,255,0.22);
+    text-shadow:0 1px 4px rgba(0,0,0,0.5);
+    will-change:top,left;
+  }
+  .merge-flyer::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:48%;
+    border-radius:8px 8px 50% 50%/8px 8px 30% 30%;
+    background:linear-gradient(to bottom,rgba(255,255,255,0.4),rgba(255,255,255,0.07));
+    pointer-events:none;
+  }
+  .merge-flyer::after {
+    content:''; position:absolute; bottom:0; left:5%; right:5%; height:28%;
+    border-radius:0 0 8px 8px;
+    background:linear-gradient(to top,rgba(0,0,0,0.25),transparent);
+    pointer-events:none;
+  }
+
+  /* ══ FLYING TILE ══ */
+  #flying-tile {
+    display:none; position:absolute; border-radius:10px;
+    align-items:center; justify-content:center;
+    font-family:'Nunito',sans-serif; font-weight:900; color:#fff;
+    overflow:hidden;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.45),
+      inset 0 -2px 0 rgba(0,0,0,0.3),
+      0 8px 28px rgba(0,0,0,0.55),
+      0 0 24px rgba(80,140,255,0.28);
+    text-shadow:0 1px 4px rgba(0,0,0,0.5);
+    pointer-events:none; z-index:50;
+    will-change:top,left,width,height;
+  }
+  #flying-tile::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:48%;
+    border-radius:10px 10px 50% 50%/10px 10px 30% 30%;
+    background:linear-gradient(to bottom,rgba(255,255,255,0.4),rgba(255,255,255,0.07));
+    pointer-events:none;
+  }
+  #flying-tile::after {
+    content:''; position:absolute; bottom:0; left:5%; right:5%; height:28%;
+    border-radius:0 0 10px 10px;
+    background:linear-gradient(to top,rgba(0,0,0,0.25),transparent);
+    pointer-events:none;
+  }
+
+  /* ══ POP ANIMATION ══ */
+  @keyframes pop {
+    0%   { transform:scale(1); }
+    45%  { transform:scale(1.42); }
+    100% { transform:scale(1); }
+  }
+  .pop { animation:pop 0.26s ease; }
+
+  /* ══ SLIDE-IN ══ */
+  @keyframes slideInLeft {
+    from { opacity:0; transform:translateX(-22px) scale(0.72); }
+    to   { opacity:1; transform:translateX(0) scale(1); }
+  }
+  .slide-in { animation:slideInLeft 0.24s cubic-bezier(0.34,1.56,0.64,1) both; }
+
+  /* ══ COMBO BANNER ══ */
+  .combo-banner {
+    position:fixed; transform:translateX(-50%);
+    font-family:'Nunito',sans-serif; font-weight:900;
+    font-size:24px; color:#fff;
+    background:linear-gradient(135deg,#f5a623,#e74c6e);
+    padding:6px 18px; border-radius:30px;
+    box-shadow:0 4px 22px rgba(245,100,35,0.55), 0 0 35px rgba(231,76,110,0.3);
+    pointer-events:none; z-index:150;
+    animation:comboPop 0.88s cubic-bezier(0.34,1.56,0.64,1) forwards;
+  }
+  @keyframes comboPop {
+    0%   { opacity:0; transform:translateX(-50%) scale(0.5) translateY(0); }
+    30%  { opacity:1; transform:translateX(-50%) scale(1.15) translateY(-8px); }
+    70%  { opacity:1; transform:translateX(-50%) scale(1) translateY(-14px); }
+    100% { opacity:0; transform:translateX(-50%) scale(0.9) translateY(-28px); }
+  }
+
+  /* ══ RAINBOW TILE ══ */
+  @keyframes rainbowShift {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  @keyframes rainbowSpin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  @keyframes rainbowPulse {
+    0%,100% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 0 18px 4px rgba(255,80,200,0.55), 0 0 40px 8px rgba(80,200,255,0.3); }
+    33%      { box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 0 18px 4px rgba(255,220,0,0.6),   0 0 40px 8px rgba(255,80,80,0.3); }
+    66%      { box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 0 18px 4px rgba(80,255,160,0.6),  0 0 40px 8px rgba(100,80,255,0.3); }
+  }
+  .rainbow-tile {
+    background: linear-gradient(270deg,#ff6eb4,#ffa94d,#ffe066,#69db7c,#4fc3f7,#a78bfa,#ff6eb4) !important;
+    background-size: 300% 300% !important;
+    animation: rainbowShift 2s linear infinite, rainbowPulse 2s ease-in-out infinite !important;
+    color: #fff !important;
+    text-shadow: 0 0 8px rgba(0,0,0,0.7), 0 1px 3px rgba(0,0,0,0.8) !important;
+  }
+  /* spinning inner shimmer ring */
+  .rainbow-tile::before {
+    background: conic-gradient(
+      rgba(255,255,255,0.5) 0deg,
+      transparent 60deg,
+      rgba(255,255,255,0.3) 120deg,
+      transparent 180deg,
+      rgba(255,255,255,0.5) 240deg,
+      transparent 300deg,
+      rgba(255,255,255,0.3) 360deg
+    ) !important;
+    animation: rainbowSpin 1.5s linear infinite !important;
+    border-radius: 50% !important;
+    top: 5% !important; left: 5% !important;
+    right: 5% !important; bottom: 5% !important;
+    height: auto !important;
+  }
+
+  /* ══ ABOUT BUTTON ══ */
+  #about-btn-wrap {
+    position:relative; z-index:2;
+    width:100%; max-width:420px;
+    display:flex; justify-content:center;
+    padding:10px 16px 16px;
+  }
+  #about-btn {
+    background:transparent;
+    border:1px solid rgba(80,120,255,0.2);
+    border-radius:20px; padding:7px 20px;
+    font-family:'Nunito',sans-serif; font-size:12px; font-weight:700;
+    color:#3a58a0; letter-spacing:1px;
+    cursor:pointer; transition:color 0.2s, border-color 0.2s, box-shadow 0.2s;
+  }
+  #about-btn:hover {
+    color:#6a8fd8; border-color:rgba(80,120,255,0.4);
+    box-shadow:0 0 14px rgba(80,120,255,0.15);
+  }
+
+  /* ══ ABOUT MODAL ══ */
+  #about-modal {
+    display:none; position:fixed; inset:0;
+    background:rgba(1,2,14,0.92); backdrop-filter:blur(12px);
+    z-index:300; align-items:center; justify-content:center;
+    padding:16px;
+  }
+  #about-modal.show { display:flex; }
+
+  #about-box {
+    background:rgba(6,10,40,0.97);
+    border:1px solid rgba(80,120,255,0.22);
+    border-radius:22px;
+    width:100%; max-width:400px;
+    max-height:88dvh;
+    overflow-y:auto;
+    position:relative;
+    box-shadow:0 0 60px rgba(40,80,200,0.25), inset 0 0 40px rgba(5,10,50,0.5);
+    scrollbar-width:thin;
+    scrollbar-color:rgba(80,120,255,0.3) transparent;
+  }
+
+  #about-close {
+    position:sticky; top:12px; float:right; margin:12px 12px 0 0;
+    background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1);
+    border-radius:50%; width:32px; height:32px;
+    color:#6a85c8; font-size:14px; font-weight:900;
+    cursor:pointer; z-index:10;
+    display:flex; align-items:center; justify-content:center;
+    transition:background 0.15s;
+  }
+  #about-close:hover { background:rgba(255,255,255,0.12); }
+
+  #about-content {
+    padding:8px 22px 28px;
+    clear:both;
+  }
+
+  .about-hero { font-size:48px; text-align:center; margin-bottom:6px; }
+
+  #about-content h2 {
+    font-size:26px; font-weight:900; text-align:center; margin-bottom:4px;
+    background:linear-gradient(135deg,#a78bfa,#4fc3f7);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  }
+
+  .about-sub {
+    text-align:center; color:#4a68b8; font-size:13px;
+    margin-bottom:22px; line-height:1.5;
+  }
+
+  .about-section {
+    margin-bottom:20px;
+    padding-bottom:20px;
+    border-bottom:1px solid rgba(80,120,255,0.1);
+  }
+  .about-section:last-of-type { border-bottom:none; }
+
+  .about-section h3 {
+    font-size:14px; font-weight:900; color:#6a8fd8;
+    letter-spacing:0.5px; margin-bottom:8px;
+    text-transform:uppercase;
+  }
+
+  .about-section p {
+    font-size:13px; color:#8aa0cc; line-height:1.65;
+    margin-bottom:8px;
+  }
+  .about-section p:last-child { margin-bottom:0; }
+
+  .about-section ul {
+    margin:0; padding-left:0; list-style:none;
+  }
+  .about-section ul li {
+    font-size:13px; color:#8aa0cc; line-height:1.6;
+    margin-bottom:8px; padding-left:16px; position:relative;
+  }
+  .about-section ul li::before {
+    content:'→'; position:absolute; left:0; color:#4a68b8;
+  }
+  .about-section ul li strong { color:#a0b8e0; }
+
+  /* spawn rate table */
+  .about-table {
+    background:rgba(10,20,70,0.5); border-radius:10px;
+    padding:10px 14px; margin-top:10px;
+    border:1px solid rgba(80,120,255,0.12);
+  }
+  .about-table .tr {
+    display:flex; justify-content:space-between;
+    font-size:13px; color:#8aa0cc;
+    padding:3px 0; border-bottom:1px solid rgba(80,120,255,0.07);
+  }
+  .about-table .tr:last-child { border-bottom:none; }
+  .about-table .tr.special { color:#a78bfa; font-weight:700; }
+  .about-table .tr span:first-child { font-weight:700; color:#a0b8e0; }
+
+  .about-footer {
+    text-align:center; font-size:11px; color:#2e4070;
+    margin-top:20px; letter-spacing:0.5px;
+  }
+
+  /* ══ GAME OVER ══ */
+  #gameover {
+    display:none; position:fixed; inset:0;
+    background:rgba(1,2,14,0.94); backdrop-filter:blur(12px);
+    z-index:200; flex-direction:column;
+    align-items:center; justify-content:center; gap:14px;
+  }
+  #gameover.show { display:flex; }
+  #gameover .go-icon { font-size:52px; line-height:1; }
+  #gameover h1 {
+    font-size:44px; font-weight:900; letter-spacing:-1px;
+    background:linear-gradient(135deg,#e74c6e,#f5a623);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    filter:drop-shadow(0 0 20px rgba(231,76,110,0.5));
+  }
+  #gameover .go-score { font-size:17px; color:#4a68b8; }
+  #gameover .go-score span {
+    color:#4ecca3; font-weight:900; font-size:26px;
+    text-shadow:0 0 14px rgba(78,204,163,0.6);
+  }
+  #gameover button {
+    margin-top:10px;
+    background:linear-gradient(135deg,#4ecca3,#3ab8ff);
+    border:none; border-radius:14px; padding:14px 44px;
+    font-family:'Nunito',sans-serif; font-size:18px; font-weight:900;
+    color:#02030e; cursor:pointer;
+    box-shadow:0 6px 24px rgba(58,184,255,0.3), 0 0 36px rgba(78,204,163,0.2);
+    transition:transform 0.15s, box-shadow 0.15s;
+  }
+  #gameover button:active  { transform:scale(0.94); }
+  #gameover button:hover   { box-shadow:0 8px 30px rgba(58,184,255,0.45), 0 0 46px rgba(78,204,163,0.3); }
+</style>
+</head>
+<body>
+
+<canvas id="starfield"></canvas>
+<div id="nebula"></div>
+
+<div id="header">
+  <div id="undo-btn" onclick="doUndo()">
+    <svg width="20" height="20" viewBox="0 0 24 24"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
+    <canvas id="undo-ring" width="50" height="50"></canvas>
+    <span id="undo-charge-label"></span>
+  </div>
+  <div class="score-box">
+    <div class="label">Score</div>
+    <div class="value" id="score-val">0</div>
+  </div>
+  <div class="score-box">
+    <div class="label">Best</div>
+    <div class="value teal" id="best-val">0</div>
+  </div>
+  <div id="restart-btn" onclick="restartGame()">
+    <svg width="22" height="22" viewBox="0 0 24 24"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+  </div>
+</div>
+
+<div id="queue-row">
+  <div id="next-slot"><div id="next-tile" class="q-tile"></div></div>
+  <div id="current-slot"><div id="current-tile" class="q-tile"></div></div>
+</div>
+
+<div id="grid-wrap">
+  <div id="grid"></div>
+  <div id="flying-tile"></div>
+</div>
+
+<div id="about-btn-wrap">
+  <button id="about-btn" onclick="document.getElementById('about-modal').classList.add('show')">✦ About this game</button>
+</div>
+
+<div id="about-modal">
+  <div id="about-box">
+    <button id="about-close" onclick="document.getElementById('about-modal').classList.remove('show')">✕</button>
+    <div id="about-content">
+      <div class="about-hero">🌌</div>
+      <h2>Cosmic Merge</h2>
+      <p class="about-sub">A space-themed number merging game built entirely in one conversation with Claude.</p>
+
+      <div class="about-section">
+        <h3>🎮 How to Play</h3>
+        <p>Tap any column to drop the current tile into it. Tiles with the same number that touch — horizontally or vertically — automatically merge and double. Chain reactions score big!</p>
+        <p>The game ends when the board is completely full with no valid moves left. A column that's full can still be played if your current tile matches the top tile there — they'll merge.</p>
+      </div>
+
+      <div class="about-section">
+        <h3>⭐ The Rainbow Tile</h3>
+        <p>The <strong>★ Rainbow</strong> tile appears with a 1% chance. When it lands next to a number, it multiplies that tile — 70% chance of ×2, 30% chance of ×4. It picks a random neighbour, so placement matters. The popup always shows you the before and after so there's no mystery.</p>
+      </div>
+
+      <div class="about-section">
+        <h3>🎲 Tile Randomness</h3>
+        <p>Tiles use fixed weighted probabilities — nothing to do with what's on your board. We tried board-aware spawning (only tiles that exist on the board) but it made late-game frustrating when you'd have only 64s and 256s dropping constantly. Fixed weights feel fairer:</p>
+        <div class="about-table">
+          <div class="tr"><span>2</span><span>25%</span></div>
+          <div class="tr"><span>4</span><span>25%</span></div>
+          <div class="tr"><span>8</span><span>22%</span></div>
+          <div class="tr"><span>16</span><span>12%</span></div>
+          <div class="tr"><span>32</span><span>9%</span></div>
+          <div class="tr"><span>64</span><span>4%</span></div>
+          <div class="tr"><span>128</span><span>4%</span></div>
+          <div class="tr special"><span>★ Rainbow</span><span>1%</span></div>
+        </div>
+      </div>
+
+      <div class="about-section">
+        <h3>🧠 Smart Merging</h3>
+        <p>The merge engine doesn't just find the first pair it can — it simulates every possible merge order and picks whichever one leads to the longest chain reaction. So if placing a tile could merge 2+2 into 4 then 4+4 into 8, it'll always find that path rather than stopping after the first merge.</p>
+        <p>This lookahead runs up to 6 levels deep so it stays snappy even on a full board.</p>
+      </div>
+
+      <div class="about-section">
+        <h3>↩ Undo</h3>
+        <p>You get one undo charge at a time. It only works if your last placement caused no merges — once tiles start combining, the state is too changed to cleanly reverse. You earn a fresh undo charge every 1,000 points, and it never stacks above 1. The ring around the undo button shows your progress toward recharging.</p>
+      </div>
+
+      <div class="about-section">
+        <h3>💾 Auto-Save</h3>
+        <p>Your game saves automatically after every move using your browser's localStorage. Close the tab, come back later — it picks up exactly where you left off. Hitting restart clears the save.</p>
+      </div>
+
+      <div class="about-section">
+        <h3>🛠 Behind the Scenes</h3>
+        <p>This game was built entirely through a conversation with Claude — no code was written by hand. Here's how the design evolved:</p>
+        <ul>
+          <li><strong>Started simple</strong> — basic grid, tap to place, instant merges. No animations, flat colours.</li>
+          <li><strong>Drop animation</strong> — the tile needed to feel physical. It now glides to the top of the chosen column then falls with a slight bounce, speed scaling with distance.</li>
+          <li><strong>Next tile preview</strong> — originally shown to the right with a label. Moved to sit just left of the current tile, smaller and dimmed, so the visual hierarchy is obvious.</li>
+          <li><strong>Glass/3D tiles</strong> — a layered CSS technique: inset highlight on the top edge, a gloss streak over the top half using a pseudo-element, and a dark gradient at the base to fake thickness.</li>
+          <li><strong>Space theme</strong> — canvas starfield with twinkling and shooting stars, nebula radial gradients that slowly pulse, frosted glass UI panels, and column lane lines in the grid.</li>
+          <li><strong>Smart merge algorithm</strong> — the first version was greedy (first pair wins). It missed chains like 2+2→4 then 4+4→8. The current version simulates all candidate merge orderings and scores each by chain depth before committing.</li>
+          <li><strong>Stepped chain animations</strong> — merges originally resolved instantly. Now each wave animates separately: tiles slide to their merge destination, pop into the new value, then the next wave triggers after a short pause so you can follow what happened.</li>
+          <li><strong>Combo multiplier</strong> — chain reactions multiply your score. Wave 1 scores at ×1, wave 2 at ×2, etc., with a banner popping up to celebrate.</li>
+          <li><strong>Game over logic</strong> — originally ended when any tile reached row 0. Changed to: game over only when every cell is full AND no column can accept the current tile (including merging into a matching top tile).</li>
+          <li><strong>Bomb & Hammer tiles</strong> — were added then removed. The bomb destroyed a random neighbour; the hammer smashed every tile in a column. Ultimately felt disruptive to the merge flow, so they were cut.</li>
+        </ul>
+      </div>
+
+      <p class="about-footer">Built with ☕ and Claude · Save data stays in your browser · No ads, no tracking</p>
+    </div>
+  </div>
+</div>
+
+<div id="gameover">
+  <div class="go-icon">🚀</div>
+  <h1>Mission Over</h1>
+  <div class="go-score">Final Score: <span id="go-score-val">0</span></div>
+  <button onclick="restartGame()">Launch Again</button>
+</div>
+
+<script>
+// ══ STARFIELD ══
+(function(){
+  const canvas = document.getElementById('starfield');
+  const ctx = canvas.getContext('2d');
+  let stars = [];
+  let W, H;
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+
+  function initStars() {
+    stars = [];
+    const count = Math.floor((W * H) / 3500);
+    for (let i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: Math.random() * 1.4 + 0.2,
+        alpha: Math.random() * 0.6 + 0.2,
+        speed: Math.random() * 0.4 + 0.05,
+        twinkleSpeed: Math.random() * 0.02 + 0.005,
+        twinkleDir: Math.random() > 0.5 ? 1 : -1,
+      });
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    for (const s of stars) {
+      s.alpha += s.twinkleSpeed * s.twinkleDir;
+      if (s.alpha > 0.9 || s.alpha < 0.1) s.twinkleDir *= -1;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(200,220,255,${s.alpha})`;
+      ctx.fill();
+    }
+    requestAnimationFrame(draw);
+  }
+
+  window.addEventListener('resize', () => { resize(); initStars(); });
+  resize(); initStars(); draw();
+
+  // Occasional shooting star
+  function shootingStar() {
+    const el = document.createElement('div');
+    el.className = 'shoot';
+    el.style.left = (Math.random() * window.innerWidth * 0.7) + 'px';
+    el.style.top  = (Math.random() * window.innerHeight * 0.4) + 'px';
+    const dur = (Math.random() * 600 + 400);
+    el.style.animationDuration = dur + 'ms';
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), dur + 100);
+    setTimeout(shootingStar, Math.random() * 5000 + 3000);
+  }
+  setTimeout(shootingStar, 2000);
+})();
+
+// ══ GAME ══
+const COLS = 5, ROWS = 8;
+let grid, score, best, currentVal, nextVal, busy, highlightCol;
+
+const gridEl     = document.getElementById('grid');
+const gridWrapEl = document.getElementById('grid-wrap');
+const flyEl      = document.getElementById('flying-tile');
+const curTileEl  = document.getElementById('current-tile');
+const nxtTileEl  = document.getElementById('next-tile');
+const scoreEl    = document.getElementById('score-val');
+const bestEl     = document.getElementById('best-val');
+const goScoreEl  = document.getElementById('go-score-val');
+const gameoverEl = document.getElementById('gameover');
+
+const RAINBOW = -1;
+
+const COLORS = {
+  2:'#8b6ff5', 4:'#6b48d5', 8:'#f5a623', 16:'#4caf78',
+  32:'#e74c6e', 64:'#e8995a', 128:'#3b82f6', 256:'#ec4899',
+  512:'#f59e0b', 1024:'#10b981', 2048:'#ef4444'
+};
+const tileCol = v => v === RAINBOW ? 'rainbow' : (COLORS[v] || '#c026d3');
+
+const FSIZES = {2:20,4:20,8:20,16:18,32:18,64:16,128:14,256:14,512:14,1024:12,2048:12};
+const fs = (v, big=true) => {
+  if (v === RAINBOW) return big ? '22px' : '15px';
+  return ((big ? FSIZES[v]||10 : Math.max(8,(FSIZES[v]||10)-4))) + 'px';
+};
+const fmt = v => {
+  if (v === RAINBOW) return '★';
+  return v >= 10000 ? (v/1000|0)+'K' : String(v);
+};
+// 1% rainbow, rest fixed weighted
+const rnd = () => {
+  const r = Math.random();
+  if (r < 0.01) return RAINBOW;
+  const n = Math.random();
+  if (n < 0.25) return 2;
+  if (n < 0.50) return 4;
+  if (n < 0.72) return 8;
+  if (n < 0.84) return 16;
+  if (n < 0.93) return 32;
+  if (n < 0.97) return 64;
+  return 128;
+};
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+// Apply rainbow/gloss styles to a tile element
+function styleTile(el, v, big = true) {
+  el.classList.remove('rainbow-tile', 'bomb-tile', 'hammer-tile');
+  if (v === RAINBOW) {
+    el.classList.add('rainbow-tile');
+    el.style.background = '';
+  } else {
+    el.style.background = tileCol(v);
+  }
+  el.style.fontSize = fs(v, big);
+  el.textContent = fmt(v);
+}
+
+// ── Build grid DOM ──
+function buildGrid() {
+  gridEl.innerHTML = '';
+  gridEl.style.gridTemplateColumns = `repeat(${COLS},1fr)`;
+  gridEl.style.gridTemplateRows    = `repeat(${ROWS},1fr)`;
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.dataset.row = r; cell.dataset.col = c;
+    cell.addEventListener('click', () => handleTap(c));
+    cell.addEventListener('touchend', e => { e.preventDefault(); handleTap(c); });
+    gridEl.appendChild(cell);
+  }
+}
+
+function renderGrid(merged = []) {
+  document.querySelectorAll('.cell').forEach(cell => {
+    const r = +cell.dataset.row, c = +cell.dataset.col;
+    cell.innerHTML = '';
+
+    // Column is blocked if full AND top cell doesn't match current tile
+    const colFull = grid[0][c] !== 0;
+    const colBlocked = colFull && grid[0][c] !== currentVal;
+    cell.classList.toggle('col-hl', c === highlightCol && !colBlocked);
+    cell.classList.toggle('col-blocked', colBlocked);
+
+    const v = grid[r][c];
+    if (v) {
+      const t = document.createElement('div');
+      t.className = 'cell-tile';
+      styleTile(t, v, true);
+      if (merged.some(m => m[0] === r && m[1] === c)) t.classList.add('pop');
+      cell.appendChild(t);
+    }
+  });
+}
+
+function setQTile(el, val, big = true, animate = false) {
+  styleTile(el, val, big);
+  if (animate) { el.classList.remove('slide-in'); void el.offsetWidth; el.classList.add('slide-in'); }
+}
+
+function cellPx(row, col) {
+  const c  = gridEl.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+  const cr = c.getBoundingClientRect();
+  const wr = gridWrapEl.getBoundingClientRect();
+  return { top: cr.top - wr.top, left: cr.left - wr.left, w: cr.width, h: cr.height };
+}
+
+// ── Drop animation ──
+function animateDrop(col, targetRow, val, done) {
+  const pad = 3;
+  const slotR  = document.getElementById('current-tile').getBoundingClientRect();
+  const wrapR  = gridWrapEl.getBoundingClientRect();
+  const startTop  = slotR.top  - wrapR.top;
+  const startLeft = slotR.left - wrapR.left;
+
+  const topPx   = cellPx(0, col);
+  const colLeft = topPx.left + pad, colTop = topPx.top + pad;
+  const tw = topPx.w - pad*2, th = topPx.h - pad*2;
+
+  const endPx   = cellPx(targetRow, col);
+  const endTop  = endPx.top  + pad;
+  const fallMs  = Math.max(100, Math.min(350, (endTop - colTop) * 0.6));
+
+  Object.assign(flyEl.style, {
+    display: 'flex', fontSize: fs(val), background: '',
+    width: '60px', height: '60px', transition: 'none',
+    top: startTop+'px', left: startLeft+'px', opacity: '1'
+  });
+  flyEl.classList.remove('rainbow-tile', 'bomb-tile', 'hammer-tile');
+  if (val === RAINBOW) flyEl.classList.add('rainbow-tile');
+  else flyEl.style.background = tileCol(val);
+  flyEl.textContent = fmt(val);
+  curTileEl.style.opacity = '0';
+
+  requestAnimationFrame(() => {
+    flyEl.style.transition = 'top 0.11s ease, left 0.13s ease, width 0.11s ease, height 0.11s ease';
+    Object.assign(flyEl.style, { top: colTop+'px', left: colLeft+'px', width: tw+'px', height: th+'px' });
+    setTimeout(() => {
+      flyEl.style.transition = `top ${fallMs}ms cubic-bezier(0.22, 0, 0.58, 1.45)`;
+      flyEl.style.top = endTop+'px';
+      setTimeout(() => {
+        flyEl.style.display = 'none';
+        curTileEl.style.opacity = '1';
+        done();
+      }, fallMs + 40);
+    }, 140);
+  });
+}
+
+// ── Game logic ──
+function gravity() {
+  for (let c = 0; c < COLS; c++) {
+    let w = ROWS - 1;
+    for (let r = ROWS - 1; r >= 0; r--) {
+      if (grid[r][c]) { grid[w][c] = grid[r][c]; if (r !== w) grid[r][c] = 0; w--; }
+    }
+  }
+}
+
+// ── Smart merge: simulate all candidate merge orderings, pick the one
+//    that leads to the deepest chain (most total merges). ──
+
+function gridSnapshot(g) {
+  return g.map(row => row.slice());
+}
+
+function candidateMerges(g) {
+  // Return every adjacent pair that could merge (unfiltered — no "used" guard,
+  // since we'll pick them one at a time in the simulation).
+  const pairs = [];
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS-1; c++) {
+    if (g[r][c] > 0 && g[r][c] === g[r][c+1])
+      pairs.push({fromR:r, fromC:c+1, toR:r, toC:c, val:g[r][c]*2});
+  }
+  for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS-1; r++) {
+    if (g[r][c] > 0 && g[r][c] === g[r+1][c])
+      pairs.push({fromR:r, fromC:c, toR:r+1, toC:c, val:g[r][c]*2});
+  }
+  return pairs;
+}
+
+function applyGravitySim(g) {
+  for (let c = 0; c < COLS; c++) {
+    let w = ROWS - 1;
+    for (let r = ROWS - 1; r >= 0; r--) {
+      if (g[r][c]) { g[w][c] = g[r][c]; if (r !== w) g[r][c] = 0; w--; }
+    }
+  }
+}
+
+function applyOneMerge(g, m) {
+  g[m.toR][m.toC] = m.val;
+  g[m.fromR][m.fromC] = 0;
+}
+
+// Simulate one full wave: greedily pick the merge from `candidates` that
+// maximises future chain depth. Returns ordered list of merges for this wave.
+function smartWave(g) {
+  let snap = gridSnapshot(g);
+  const wave = [];
+  const usedCells = new Set();
+
+  while (true) {
+    const candidates = candidateMerges(snap).filter(m =>
+      !usedCells.has(`${m.fromR},${m.fromC}`) &&
+      !usedCells.has(`${m.toR},${m.toC}`)
+    );
+    if (!candidates.length) break;
+
+    // Score each candidate by simulating: apply it + gravity, then count
+    // how many further merges are reachable in subsequent waves.
+    let bestMerge = null, bestScore = -1;
+    for (const m of candidates) {
+      const sim = gridSnapshot(snap);
+      applyOneMerge(sim, m);
+      applyGravitySim(sim);
+      const depth = chainDepth(sim, 0);
+      if (depth > bestScore) { bestScore = depth; bestMerge = m; }
+    }
+
+    wave.push(bestMerge);
+    usedCells.add(`${bestMerge.fromR},${bestMerge.fromC}`);
+    usedCells.add(`${bestMerge.toR},${bestMerge.toC}`);
+    applyOneMerge(snap, bestMerge);
+  }
+
+  return wave;
+}
+
+// Count total merges reachable from this grid state (capped to prevent explosion)
+function chainDepth(g, depth) {
+  if (depth > 6) return depth; // cap recursion
+  applyGravitySim(g);
+  const pairs = candidateMerges(g);
+  if (!pairs.length) return depth;
+  // Simulate applying all pairs in scan order (good enough for scoring)
+  let count = 0;
+  const used = new Set();
+  for (const m of pairs) {
+    if (used.has(`${m.fromR},${m.fromC}`) || used.has(`${m.toR},${m.toC}`)) continue;
+    applyOneMerge(g, m);
+    used.add(`${m.fromR},${m.fromC}`);
+    used.add(`${m.toR},${m.toC}`);
+    count++;
+  }
+  return chainDepth(g, depth + count);
+}
+
+function findMerges() {
+  return smartWave(grid);
+}
+
+function applyMerges(merges) {
+  for (const {fromR, fromC, toR, toC, val} of merges) {
+    grid[toR][toC] = val; grid[fromR][fromC] = 0;
+  }
+}
+
+function animateMergeWave(merges, comboCount) {
+  return new Promise(resolve => {
+    if (!merges.length) { resolve(); return; }
+    const SLIDE_MS = 160;
+    const flyers = [];
+
+    for (const {fromR, fromC, toR, toC, val} of merges) {
+      const fromPx = cellPx(fromR, fromC);
+      const toPx   = cellPx(toR, toC);
+      const pad = 3;
+      const fl = document.createElement('div');
+      fl.className = 'merge-flyer';
+      fl.style.background  = (val/2 === RAINBOW) ? '' : tileCol(val/2);
+      if (val/2 === RAINBOW) fl.classList.add('rainbow-tile');
+      fl.style.fontSize    = fs(val/2);
+      fl.style.width       = (fromPx.w - pad*2) + 'px';
+      fl.style.height      = (fromPx.h - pad*2) + 'px';
+      fl.style.top         = (fromPx.top  + pad) + 'px';
+      fl.style.left        = (fromPx.left + pad) + 'px';
+      fl.style.transition  = `top ${SLIDE_MS}ms ease-in, left ${SLIDE_MS}ms ease-in`;
+      fl.textContent = fmt(val/2);
+      gridWrapEl.appendChild(fl);
+      flyers.push({fl, toPx, pad});
+      const fromCell = gridEl.querySelector(`.cell[data-row="${fromR}"][data-col="${fromC}"]`);
+      if (fromCell) fromCell.innerHTML = '';
+    }
+
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      for (const {fl, toPx, pad} of flyers) {
+        fl.style.top  = (toPx.top  + pad) + 'px';
+        fl.style.left = (toPx.left + pad) + 'px';
+      }
+    }));
+
+    setTimeout(() => {
+      flyers.forEach(({fl}) => fl.remove());
+      applyMerges(merges);
+      const gain = merges.reduce((s,m) => s + m.val, 0) * comboCount;
+      score += gain;
+      scoreEl.textContent = score;
+      if (score > best) { best = score; localStorage.setItem('nmBest', best); }
+      bestEl.textContent = best;
+      if (comboCount > 1) showCombo(comboCount, merges);
+      renderGrid(merges.map(m => [m.toR, m.toC]));
+      resolve();
+    }, SLIDE_MS + 40);
+  });
+}
+
+function showCombo(count, merges) {
+  const {toR, toC} = merges[0];
+  const cell = gridEl.querySelector(`.cell[data-row="${toR}"][data-col="${toC}"]`);
+  const cr = cell.getBoundingClientRect();
+  const el = document.createElement('div');
+  el.className = 'combo-banner';
+  el.textContent = `${count}× COMBO!`;
+  el.style.top  = (cr.top - 10) + 'px';
+  el.style.left = (cr.left + cr.width/2) + 'px';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 900);
+}
+
+// ── Rainbow: find all rainbow tiles and their best numeric neighbor ──
+function resolveRainbows() {
+  const DIRS = [[0,1],[0,-1],[1,0],[-1,0]];
+  // 70% chance x2, 30% chance x4 — no more surprise x8
+  const MULTS = [2, 2, 2, 2, 2, 2, 2, 4, 4, 4];
+  let anyRainbow = false;
+  const events = [];
+
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    if (grid[r][c] !== RAINBOW) continue;
+    // Find all numeric neighbors
+    const neighbors = [];
+    for (const [dr,dc] of DIRS) {
+      const nr=r+dr, nc=c+dc;
+      if (nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&grid[nr][nc]>0) neighbors.push({nr,nc});
+    }
+    if (!neighbors.length) continue;
+    anyRainbow = true;
+    const mult = MULTS[Math.floor(Math.random()*MULTS.length)];
+    // Pick a random neighbor to multiply
+    const {nr,nc} = neighbors[Math.floor(Math.random()*neighbors.length)];
+    const oldVal = grid[nr][nc];
+    const newVal = oldVal * mult;
+    events.push({rainbowR:r, rainbowC:c, nr, nc, oldVal, newVal, mult});
+  }
+
+  for (const {rainbowR, rainbowC, nr, nc, newVal} of events) {
+    grid[rainbowR][rainbowC] = 0;
+    grid[nr][nc] = newVal;
+    score += newVal;
+  }
+  if (score > best) { best=score; localStorage.setItem('nmBest',best); }
+  scoreEl.textContent = score; bestEl.textContent = best;
+  return events;
+}
+
+function showRainbowBoom(events) {
+  for (const {nr, nc, mult, oldVal, newVal} of events) {
+    const cell = gridEl.querySelector(`.cell[data-row="${nr}"][data-col="${nc}"]`);
+    if (!cell) continue;
+    const cr = cell.getBoundingClientRect();
+    const el = document.createElement('div');
+    el.className = 'combo-banner';
+    el.textContent = mult === 4 ? `✨ ×4 PRISM! ${fmt(oldVal)}→${fmt(newVal)}` : `✨ PRISM! ${fmt(oldVal)}→${fmt(newVal)}`;
+    el.style.top  = (cr.top - 10) + 'px';
+    el.style.left = (cr.left + cr.width/2) + 'px';
+    el.style.background = 'linear-gradient(135deg,#a78bfa,#4fc3f7,#69db7c,#ffe066,#ff6eb4)';
+    el.style.backgroundSize = '300% 300%';
+    el.style.animation = 'comboPop 0.88s cubic-bezier(0.34,1.56,0.64,1) forwards, rainbowShift 1s linear infinite';
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 950);
+  }
+}
+
+async function resolveAll() {
+  let comboCount = 0;
+  gravity(); renderGrid();
+
+  // Rainbow
+  const rainbowEvents = resolveRainbows();
+  if (rainbowEvents.length) {
+    await wait(60);
+    gravity(); renderGrid(rainbowEvents.map(e=>[e.nr,e.nc]));
+    showRainbowBoom(rainbowEvents);
+    await wait(340);
+  }
+
+  while (true) {
+    const merges = findMerges();
+    if (!merges.length) break;
+    comboCount++;
+    await animateMergeWave(merges, comboCount);
+    gravity(); renderGrid();
+    await wait(80);
+  }
+}
+
+async function handleTap(col) {
+  if (busy || gameoverEl.classList.contains('show')) return;
+
+  // Find target row: lowest empty cell in this column
+  let targetRow = -1;
+  for (let r = ROWS-1; r >= 0; r--) { if (!grid[r][col]) { targetRow = r; break; } }
+
+  // Column is full — only allow if top cell matches current tile (will merge)
+  if (targetRow === -1) {
+    const topVal = grid[0][col];
+    if (topVal === currentVal) {
+      targetRow = 0; // place on top — merge will resolve it
+    } else {
+      return; // truly blocked
+    }
+  }
+
+  busy = true;
+
+  // Save undo snapshot BEFORE placement (only if we still have undo available
+  // or there's room — we always save so restoring works correctly)
+  undoSnapshot = {
+    grid: grid.map(r => r.slice()),
+    currentVal, nextVal, score,
+    scoreAtLastUndoRecharge
+  };
+
+  const dropping = currentVal;
+  await new Promise(resolve => animateDrop(col, targetRow, dropping, resolve));
+  grid[targetRow][col] = dropping;
+
+  const scoreBefore = score;
+  await resolveAll();
+
+  // If any merges happened, the undo snapshot is no longer valid
+  if (score > scoreBefore) {
+    undoSnapshot = null;
+    // Check undo recharge
+    if (!undoAvailable) {
+      const nextThreshold = scoreAtLastUndoRecharge + UNDO_RECHARGE_COST;
+      if (score >= nextThreshold) {
+        undoAvailable = true;
+        scoreAtLastUndoRecharge = score;
+        flashUndoReady();
+      }
+    }
+  }
+  updateUndoUI();
+
+  // Game over: board is full AND no column accepts the current tile
+  const boardFull = grid.every((row, r) => row.every((v, c) => v !== 0));
+  const anyPlayable = Array.from({length: COLS}, (_,c) => c).some(c => {
+    // Column has an empty cell, or top cell matches current (merge)
+    return grid[0][c] === 0 || grid[0][c] === currentVal;
+  });
+  if (boardFull && !anyPlayable) {
+    goScoreEl.textContent = score;
+    gameoverEl.classList.add('show');
+    clearSave();
+    busy = false; return;
+  }
+
+  currentVal = nextVal; nextVal = rnd();
+  setQTile(curTileEl, currentVal, true, true);
+  setQTile(nxtTileEl, nextVal, false, false);
+  saveGame();
+  busy = false;
+}
+
+// ── Column highlight ──
+function setHL(col) { if (col !== highlightCol) { highlightCol = col; renderGrid(); } }
+gridEl.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const el = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.cell');
+  if (el) setHL(+el.dataset.col);
+}, { passive: false });
+gridEl.addEventListener('touchend',   () => { highlightCol = -1; renderGrid(); });
+gridEl.addEventListener('mouseleave', () => { highlightCol = -1; renderGrid(); });
+gridEl.addEventListener('mousemove', e => {
+  const el = document.elementFromPoint(e.clientX, e.clientY)?.closest('.cell');
+  if (el) setHL(+el.dataset.col);
+});
+
+// ── Undo state ──
+let undoAvailable = true;          // do we have 1 undo charge?
+let undoSnapshot = null;           // {grid, currentVal, nextVal, score} saved before placement
+let scoreAtLastUndoRecharge = 0;   // score threshold that gave us the current charge
+const UNDO_RECHARGE_COST = 1000;
+
+const undoBtn   = document.getElementById('undo-btn');
+const undoRing  = document.getElementById('undo-ring');
+const undoLabel = document.getElementById('undo-charge-label');
+
+function updateUndoUI() {
+  if (undoAvailable) {
+    undoBtn.className = 'available';
+    undoLabel.textContent = 'UNDO';
+    drawUndoRing(1);
+  } else {
+    undoBtn.className = 'unavailable';
+    // Show charge progress toward next recharge
+    const nextThreshold = scoreAtLastUndoRecharge + UNDO_RECHARGE_COST;
+    const progress = Math.min(1, Math.max(0, (score - scoreAtLastUndoRecharge) / UNDO_RECHARGE_COST));
+    const pct = Math.floor(progress * 100);
+    undoLabel.textContent = pct >= 100 ? '' : `+${UNDO_RECHARGE_COST - Math.floor((score - scoreAtLastUndoRecharge))}`;
+    drawUndoRing(progress);
+    // Auto-recharge check
+    if (score >= nextThreshold && !undoAvailable) {
+      undoAvailable = true;
+      scoreAtLastUndoRecharge = score;
+      updateUndoUI();
+      flashUndoReady();
+    }
+  }
+}
+
+function drawUndoRing(progress) {
+  const canvas = undoRing;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const cx = W/2, cy = H/2, r = W/2 - 2;
+  const startAngle = -Math.PI/2;
+  const endAngle   = startAngle + Math.PI * 2 * progress;
+
+  // Track ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.strokeStyle = 'rgba(60,100,200,0.2)';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  if (progress > 0) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, startAngle, endAngle);
+    ctx.strokeStyle = progress >= 1
+      ? 'rgba(78,204,163,0.85)'
+      : 'rgba(100,160,255,0.7)';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+}
+
+function flashUndoReady() {
+  let flashes = 0;
+  const iv = setInterval(() => {
+    undoBtn.style.boxShadow = flashes % 2 === 0
+      ? '0 0 22px rgba(78,204,163,0.8)'
+      : '0 0 6px rgba(78,204,163,0.2)';
+    if (++flashes >= 6) { clearInterval(iv); undoBtn.style.boxShadow = ''; updateUndoUI(); }
+  }, 120);
+}
+
+function doUndo() {
+  if (!undoAvailable || !undoSnapshot || busy) return;
+  undoAvailable = false;
+  // Restore state
+  grid       = undoSnapshot.grid.map(r => r.slice());
+  currentVal = undoSnapshot.currentVal;
+  nextVal    = undoSnapshot.nextVal;
+  score      = undoSnapshot.score;
+  scoreAtLastUndoRecharge = undoSnapshot.scoreAtLastUndoRecharge;
+  undoSnapshot = null;
+  // Update UI
+  scoreEl.textContent = score;
+  bestEl.textContent  = best;
+  setQTile(curTileEl, currentVal, true, false);
+  setQTile(nxtTileEl, nextVal, false, false);
+  renderGrid();
+  updateUndoUI();
+  saveGame();
+}
+
+// ── Save / Load ──
+const SAVE_KEY = 'cosmicMerge_save';
+
+function saveGame() {
+  const state = {
+    grid, score, best, currentVal, nextVal,
+    undoAvailable, scoreAtLastUndoRecharge,
+    undoSnapshot: undoSnapshot
+      ? { grid: undoSnapshot.grid, currentVal: undoSnapshot.currentVal,
+          nextVal: undoSnapshot.nextVal, score: undoSnapshot.score,
+          scoreAtLastUndoRecharge: undoSnapshot.scoreAtLastUndoRecharge }
+      : null
+  };
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch(e) {}
+}
+
+function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const s = JSON.parse(raw);
+    // Basic validation
+    if (!s.grid || s.grid.length !== ROWS || !Array.isArray(s.grid[0])) return false;
+    grid       = s.grid;
+    score      = s.score  ?? 0;
+    best       = s.best   ?? best;
+    currentVal = s.currentVal ?? rnd();
+    nextVal    = s.nextVal    ?? rnd();
+    undoAvailable           = s.undoAvailable ?? true;
+    scoreAtLastUndoRecharge = s.scoreAtLastUndoRecharge ?? 0;
+    undoSnapshot = s.undoSnapshot ?? null;
+    return true;
+  } catch(e) { return false; }
+}
+
+function clearSave() {
+  try { localStorage.removeItem(SAVE_KEY); } catch(e) {}
+}
+
+// ── Boot ──
+function restartGame() {
+  gameoverEl.classList.remove('show');
+  score = 0; busy = false; highlightCol = -1;
+  grid = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+  currentVal = rnd(); nextVal = rnd();
+  undoAvailable = true;
+  undoSnapshot = null;
+  scoreAtLastUndoRecharge = 0;
+  flyEl.style.display = 'none';
+  curTileEl.style.opacity = '1';
+  setQTile(curTileEl, currentVal, true, false);
+  setQTile(nxtTileEl, nextVal, false, false);
+  renderGrid();
+  scoreEl.textContent = 0; bestEl.textContent = best;
+  updateUndoUI();
+  clearSave();
+}
+
+function alignCurrentSlot() {
+  const col3 = gridEl.querySelector('.cell[data-row="0"][data-col="2"]');
+  if (!col3) return;
+  const colR = col3.getBoundingClientRect();
+  const rowR = document.getElementById('queue-row').getBoundingClientRect();
+  const cx = colR.left + colR.width/2 - rowR.left;
+  // Current tile centred on col 3
+  document.getElementById('current-slot').style.left = (cx - 30) + 'px';
+  // Next tile: 44px wide, 8px gap to the left of current
+  document.getElementById('next-slot').style.left = (cx - 30 - 8 - 44) + 'px';
+}
+
+best = parseInt(localStorage.getItem('nmBest') || '0');
+buildGrid();
+
+// Try to resume saved game, otherwise start fresh
+if (loadGame()) {
+  flyEl.style.display = 'none';
+  curTileEl.style.opacity = '1';
+  setQTile(curTileEl, currentVal, true, false);
+  setQTile(nxtTileEl, nextVal, false, false);
+  renderGrid();
+  scoreEl.textContent = score;
+  bestEl.textContent  = best;
+  updateUndoUI();
+} else {
+  restartGame();
+}
+
+requestAnimationFrame(alignCurrentSlot);
+window.addEventListener('resize', alignCurrentSlot);
+</script>
+</body>
+</html>
